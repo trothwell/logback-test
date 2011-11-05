@@ -1,17 +1,7 @@
 package org.trothwell.lbtest;
 
-import ch.qos.logback.classic.LoggerContext;
-import ch.qos.logback.classic.joran.JoranConfigurator;
-import ch.qos.logback.core.joran.spi.JoranException;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.MDC;
 
 import java.io.File;
 import java.io.FileFilter;
@@ -21,19 +11,30 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.MDC;
+
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.joran.JoranConfigurator;
+import ch.qos.logback.core.joran.spi.JoranException;
+
 public class TestCloseTBRP {
-  private File tmp;
+  /**
+   * Using a counter makes it a bit easier to determine which temp folder is
+   * which when looking at logs.
+   */
+  private static int counter = 0;
   private LoggerContext lc;
+  private File tmp;
 
   @After
   public void clean() throws IOException {
+    MDC.clear();
+
     try {
-      try {
-        // FIXME: is everything flushed to the file?
-        TimeUnit.SECONDS.sleep(5);
-      } catch (InterruptedException e) {
-        echo("Interrupted in sleep.");
-      }
       lc.stop();
     } catch (RuntimeException e) {
       echo("Exception while stopping: " + e.getClass().getSimpleName() + " - "
@@ -41,34 +42,15 @@ public class TestCloseTBRP {
       throw e;
     } finally {
       // Always try to delete temp files
-      try {
-        // FIXME: should we wait for async compression process?
-        TimeUnit.SECONDS.sleep(15);
-      } catch (InterruptedException e) {
-        echo("Interrupted in sleep.");
-      } finally {
-        recursiveDelete(tmp);
-      }
+      recursiveDelete(tmp);
     }
   }
-
-  /**
-   * Using a counter makes it a bit easier to determine which temp folder is
-   * which when looking at logs.
-   */
-  private static int counter = 0;
 
   @Before
   public void setup() throws IOException {
     lc = new LoggerContext();
-    tmp = File.createTempFile(TestCloseTBRP.class.getSimpleName() + "_"
-        + (counter++) + "_", ".tmp");
-    if (!tmp.delete()) {
-      throw new IOException("Failed to delete: " + tmp.getAbsolutePath());
-    }
-    if (!tmp.mkdir()) {
-      throw new IOException("Failed to create folder: " + tmp.getAbsolutePath());
-    }
+    tmp = new File("target/logs/" + TestCloseTBRP.class.getSimpleName() + "_"
+        + (counter++));
   }
 
   @Test
@@ -86,11 +68,20 @@ public class TestCloseTBRP {
     MDC.put("KEY", "key");
     log.info("Test2"); // log to specific
 
+    lc.stop();
+
+    try {
+      // Wait for async delete to complete
+      TimeUnit.SECONDS.sleep(1);
+    } catch (InterruptedException e) {
+    }
+
     List<String> txts = recursiveList(tmp, new FileFilter() {
       public boolean accept(File f) {
         return f.getName().endsWith(".txt");
       }
     });
+    // FIXME: have FileAppender release lock
     assertEquals("The raw shouldn't exist.", 0, txts.size());
 
     List<String> zips = recursiveList(tmp, new FileFilter() {
@@ -117,6 +108,14 @@ public class TestCloseTBRP {
     log.info("Test1"); // log to unknown
     MDC.put("KEY", "key");
     log.info("Test2"); // log to specific
+
+    lc.stop();
+
+    try {
+      // TODO: Any async processes to wait for?
+      TimeUnit.SECONDS.sleep(1);
+    } catch (InterruptedException e) {
+    }
 
     List<String> txts = recursiveList(tmp, new FileFilter() {
       public boolean accept(File f) {
