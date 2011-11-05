@@ -6,6 +6,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import ch.qos.logback.core.FileAppender;
 import ch.qos.logback.core.rolling.RolloverFailure;
 import ch.qos.logback.core.rolling.TimeBasedFileNamingAndTriggeringPolicy;
 import ch.qos.logback.core.rolling.TimeBasedRollingPolicy;
@@ -30,6 +31,15 @@ public class CloseTBRP<E> extends TimeBasedRollingPolicy<E> {
     super();
     this.renameUtil = new RenameUtil();
     this.hasRollOccurred = false;
+  }
+
+  @Override
+  public void setParent(@SuppressWarnings("rawtypes") FileAppender appender) {
+    if (appender.rawFileProperty() != null) {
+      throw new RuntimeException(
+          "Appender must not have file property defined.");
+    }
+    super.setParent(appender);
   }
 
   @Override
